@@ -1,0 +1,1428 @@
+Gemini
+
+2.5 Flash
+
+
+
+
+Create
+Designing and Implementing a Custom Python Data Quality Framework
+1. Executive Summary
+This report outlines the design and implementation of a custom Python data quality framework, developed to provide a robust, flexible, and extensible solution for ensuring data integrity in modern data pipelines. Drawing significant inspiration from the established capabilities of Great Expectations, this framework addresses the critical need for automated data validation, profiling, and documentation. It emphasizes a modular architecture, adherence to industry-standard best practices in Python development, and a design that facilitates deep customization and integration into diverse data ecosystems. The framework's core components—Expectations, Data Connectors, a Validation Engine, Profilers, and a comprehensive Reporting system—are engineered to offer precise control over data quality processes, streamline operations, and enhance collaborative understanding of data assets.
+
+2. Introduction: The Imperative of Data Quality in Modern Pipelines
+The Critical Role of Data Quality
+In today's data-driven landscape, organizations increasingly rely on vast and complex datasets for critical business decisions. The sheer volume and velocity of data, coupled with its intricate nature, underscore the paramount importance of data quality. Poor data quality can lead to flawed analytical insights, operational inefficiencies, and substantial financial losses. For instance, inaccurate inventory data can result in significant discrepancies, impacting supply chains and customer satisfaction. A robust data quality framework is not merely a technical tool but a strategic imperative. It represents a structured set of principles, processes, and tools that organizations adopt to meet stringent data quality standards, implementing secure and comprehensive checks on data pipelines from source to destination.   
+
+The evolution of data environments, marked by increasing complexity and velocity, necessitates a shift from manual data quality checks to automated frameworks. Manual scripts are inherently prone to human error, difficult to scale, and unsustainable as data volumes grow. Automated frameworks, by providing structured processes and tools, allow for the consistent application of data quality standards. This consistency directly supports robust data governance, ensuring clear guidelines on data responsibility, usage, and interaction, which in turn fosters accountability and improves compliance adherence. This automation is a fundamental requirement for maintaining data quality at an enterprise scale, transforming data management from a reactive firefighting exercise into a proactive, strategic advantage.   
+
+Overview of Great Expectations and the Motivation for a Custom Solution
+Great Expectations (GE) stands as a leading open-source tool widely recognized for its capabilities in validating, documenting, and profiling data. It effectively provides "unit tests for your data," enabling data teams to assert what they expect from data and quickly identify issues. GE's core features include declarative Expectations, which are human-readable assertions about data; a robust data validation engine; and Data Docs, which render validation results into clear, human-readable reports. The tool boasts a comprehensive Expectations framework, supports in-place data quality checks, facilitates data contract enforcement, offers broad integration capabilities, and provides flexible storage options for its artifacts.   
+
+Despite its strengths, Great Expectations can present certain challenges in practical application. Some users have found it "annoyingly cumbersome," noting that it requires an extensive setup involving projects, suites, checkpoints, and datasources, even for validating simple in-memory Pandas DataFrames. Furthermore, while generally scalable, GE can face performance issues with extremely large datasets, and its documentation, though comprehensive, has been perceived as complex for newcomers. The decision to develop a custom data quality framework, therefore, stems from a strategic need for deeper control, specialized integrations, or a lighter architectural footprint than existing solutions might offer. Building a custom framework allows for precise customization to individual needs and specifications, offering tailored control over the architecture, dependencies, and operational overhead. This approach aims to create a solution that is potentially more lightweight and precisely tailored to specific enterprise requirements, addressing the perceived complexities or limitations of existing, more generalized tools.   
+
+3. Core Concepts and Architectural Design
+This section delineates the fundamental building blocks and guiding principles for the custom data quality framework. It draws heavily from the proven concepts established by Great Expectations while embedding robust software engineering principles to ensure extensibility, maintainability, and scalability.
+
+Foundational Principles
+The framework's design is rooted in several core concepts, inspired by the effectiveness of Great Expectations in addressing data quality challenges.
+
+Expectations and Expectation Suites: Defining Data Contracts
+At the heart of the framework lies the Expectation, which serves as the fundamental unit of data quality. An Expectation is a declarative assertion about how data should appear. These assertions function as "unit tests for your data," allowing for precise verification of data characteristics. For instance, an Expectation might assert that a column's values must fall within a specific range, similar to    
+
+expect_column_values_to_be_between(column="passenger_count", min_value=1, max_value=6). The framework provides a clear, Pythonic mechanism for users to define these human-readable assertions.   
+
+When multiple Expectations are logically grouped together, they form an Expectation Suite. This suite collectively defines the quality characteristics and expected behavior of a specific data asset, effectively serving as a "data contract" for that asset. The concept of an Expectation extends beyond mere technical validation; it acts as a universal communication protocol for data quality. Expectations are described as the means by which data teams communicate how data should appear. Their human-readable nature ensures they can be leveraged by automated profilers, inform data documentation, and provide clear diagnostic information in validation results. This dual function means that a well-defined Expectation is not just a test case but a shareable, understandable statement about data quality. This bridges the gap between technical implementation (developers, data engineers) and business understanding (business analysts, product owners) through comprehensive documentation. This capability is pivotal for effective data governance and cross-functional collaboration, ensuring that decisions regarding essential data are carefully considered and aligned with organizational goals.   
+
+Data Assets, Batches, and Validators: Data Interaction and Validation
+A Data Asset is defined as a logical collection of records, such as a user table in a database or monthly financial data, about which metadata—particularly Expectations—is tracked. It represents any collection of records significant enough to be given a name and tracked for quality. From a Data Asset, a    
+
+Batch is derived. A Batch represents a specific selection or slice of data, potentially based on a query, time range, or other criteria, allowing for granular validation on subsets of the larger Data Asset. This concept is crucial for scalability and flexibility, enabling the framework to adapt to diverse data processing paradigms. Data assets can originate from streaming data that is never stored, incremental deliveries, analytic queries, or one-time snapshots. The Batch concept allows validation to be applied to these varying data slices without requiring the entire Data Asset to be loaded or processed for every validation run. This is critical for performance and resource efficiency, especially with large or continuously updated datasets, as it enables targeted, incremental validation.   
+
+The Validator is the operational component responsible for taking a specific Batch of data and an associated Expectation Suite. Its role is to evaluate each Expectation within the suite against the provided data, returning a clear success or failure result along with any unexpected values encountered.   
+
+Profilers: Automated Data Characteristic Discovery
+A Profiler is a mechanism designed to automatically generate an initial Expectation Suite by analyzing one or more Data Assets. This feature significantly streamlines the data quality process by bootstrapping the creation of rules, suggesting common data patterns, and identifying potential areas for validation. The profiler performs detailed column profiling, which includes inferring data type consistency, identifying missing values, and detecting erroneous data. It also conducts cross-field analysis to validate consistency across different columns and employs pattern recognition techniques, such as regular expressions, to ensure specific data types (e.g., dates, names) conform to expected formats.   
+
+Validation Results and Data Documentation: Reporting and Transparency
+The output of a Validator run is encapsulated in Validation Results. These results clearly indicate which Expectations passed or failed and provide detailed information on any unexpected values, which is invaluable for debugging data issues. Complementing this,    
+
+Data Documentation (Data Docs) transforms Expectation Suites and Validation Results into a clean, human-readable format, typically HTML. These continuously updated reports serve as comprehensive data quality reports. This documentation is particularly crucial for fostering collaboration with non-technical stakeholders, enabling them to understand the quality of the data they rely on without delving into technical specifics.   
+
+Stores and Data Context: Configuration and State Management
+To maintain state and manage configurations, the framework employs Stores. A Store is a generalized mechanism for persisting various framework objects, including Expectation Suites, Validation Results, and metrics. This persistence allows for the stateful tracking of data quality over time. The    
+
+Data Context serves as the central configuration object, managing all Stores and other framework settings. It provides a single entry point for framework configuration and interaction. The concepts of "Store" and "Data Context" abstract away the complexities of persistence and configuration. This separation promotes modularity, meaning the core logic of Expectations and Validation does not need to be aware of    
+
+how or where these artifacts are stored. This abstraction enables the use of different storage backends (e.g., file systems, cloud storage like S3, or databases, as supported by Great Expectations ) and facilitates various deployment models, from local development environments to cloud-based agents. This design significantly enhances the framework's adaptability to diverse operational environments, ensuring consistent and reproducible data quality checks.   
+
+Architectural Principles & Design Patterns for Extensibility
+The framework's architecture is meticulously crafted with core software engineering principles to ensure it is modular, scalable, maintainable, and robust. A modular design is fundamental, as it simplifies development, enhances code reusability, reduces duplication, and minimizes the likelihood of version conflicts during collaborative development. Scalability is addressed by leveraging the underlying data processing capabilities and efficient batching mechanisms, particularly for large datasets. Robustness is achieved through comprehensive error handling and rigorous input validation.   
+
+The strategic application of established design patterns provides tried-and-tested solutions to common coding challenges, offering blueprints for clean, scalable, and efficient code. These patterns facilitate code reuse, improve readability, and enhance the flexibility of solutions. The strategic application of these patterns is not merely about adhering to good coding practices; it is a proactive measure against the inherent complexities and evolving nature of data quality requirements, ensuring the framework's long-term adaptability. Data quality requirements are rarely static; new data sources, business rules, and compliance needs constantly emerge. Design patterns provide mechanisms to introduce new functionality without modifying existing core code, which is crucial for a data quality framework that must evolve with the data landscape without requiring complete re-architectures. This approach reduces technical debt and increases the framework's lifespan and value.   
+
+Application of Creational, Structural, and Behavioral Design Patterns:
+Creational Patterns focus on object creation, providing flexibility in how objects are instantiated.
+
+Factory Method: This pattern will be used to provide an interface for creating different types of Expectation objects or DataConnector instances based on input parameters (e.g., data source type) without explicitly defining their concrete classes. This allows for easy extension with new expectation types or data sources without modifying the core creation logic.   
+
+Singleton: The FrameworkContext and potentially a logging manager will be implemented as Singletons. This ensures that only one instance of these critical components exists globally, providing a consistent, centralized point of access for configuration and resource optimization throughout the application.   
+
+Structural Patterns focus on organizing classes and objects to form larger structures, ensuring clean, extensible, and maintainable code.
+
+Adapter: This pattern will be employed to enable compatibility between the framework's standardized interfaces and diverse external data sources or existing data processing libraries. For example, it can adapt a Pandas DataFrame to a generic    
+
+Batch interface expected by the Validator.
+
+Composite: The ExpectationSuite will leverage the Composite pattern, allowing complex suites to be treated uniformly, whether they contain individual Expectation objects or nested groups of expectations. This enables the construction and validation of hierarchical data quality rules.   
+
+Decorator: This pattern allows for the dynamic addition of functionality, such as logging, caching, or pre-processing, to Validator methods or Expectation checks without altering their core structure. This provides a flexible way to enhance behavior without modifying existing code.   
+
+Behavioral Patterns focus on how objects interact and communicate, defining clear, flexible, and reusable communication protocols.
+
+Strategy: This pattern will define a family of algorithms for data validation (e.g., strict vs. lenient validation) and allow them to be swapped dynamically at runtime. This can also apply to different profiling algorithms or validation reporting formats, providing flexibility in how data quality is assessed and reported.   
+
+Chain of Responsibility: This pattern is ideal for processing data through a series of Expectation checks. Each check in the chain can decide to process the data or pass it to the next handler, enabling sequential and decoupled validation steps.   
+
+Observer: This pattern will implement a notification system where changes in ValidationResult (e.g., a failed expectation) can automatically trigger updates to DataDocs generators or external alerting systems.   
+
+Separation of Concerns and Dependency Inversion:
+The framework design strictly adheres to the principle of Separation of Concerns, ensuring that different modules and components have distinct, well-defined responsibilities. For instance, data connection logic is separate from validation logic, which is distinct from reporting. This reduces coupling between components, making the system easier to understand, test, and maintain. Furthermore, the    
+
+Dependency Inversion Principle will be applied, ensuring that high-level modules (e.g., the Validator) do not depend on low-level modules (e.g., specific DataConnector implementations), but rather on abstractions. This approach enhances flexibility, allowing new implementations to be plugged in without altering high-level logic, and significantly improves testability.
+
+Table 1: Core Components and Their Analogs
+This table provides a clear mapping of the proposed custom framework's core components to their conceptual counterparts in Great Expectations, illustrating the inspiration and the distinct role each component plays within the custom implementation.
+
+Custom Framework Component	Great Expectations Analog	Purpose/Role
+Expectation	Expectation	A declarative assertion about how data should appear; the fundamental unit of data quality validation.
+ExpectationSuite	Expectation Suite	A logical grouping of multiple Expectation objects that collectively define the quality characteristics of a specific data asset, serving as its data contract.
+DataConnector	Datasource	An abstraction for connecting to and retrieving data from various sources (e.g., Pandas DataFrame, SQL database, Spark).
+Batch	Batch	A specific selection or slice of data retrieved from a DataAsset for granular validation.
+Validator	Validator	The core engine that takes a Batch and an ExpectationSuite and evaluates each Expectation against the data.
+Profiler	Profiler	Automatically analyzes data to infer patterns and statistical properties, generating an initial ExpectationSuite.
+ValidationResultStore	Store (for Validation Results)	A mechanism for persisting ValidationResult objects, enabling historical tracking and auditing.
+ExpectationStore	Store (for Expectation Suites)	A mechanism for persisting ExpectationSuite objects, ensuring consistent application of data quality rules.
+FrameworkContext	Data Context	The central configuration object that manages all framework settings, including references to stores and data connectors.
+Reporter	Data Docs	Generates human-readable reports (e.g., HTML) from ExpectationSuites and ValidationResults for transparency and collaboration.
+Table 2: Key Design Patterns Applied
+This table lists essential design patterns utilized in the framework's architecture and briefly explains how each contributes to its extensibility, maintainability, and scalability.
+
+Design Pattern	Category	Application in Framework	Benefit
+Factory Method	Creational	Creating different Expectation types or DataConnector instances based on configuration.	Loose coupling between client code and concrete object creation; easy addition of new types.
+Singleton	Creational	Centralized FrameworkContext and logging manager.	Ensures a single, globally accessible instance for consistent configuration and resource optimization.
+Adapter	Structural	Integrating diverse data sources (e.g., Pandas, SQL) into a common Batch interface.	Enables compatibility between incompatible interfaces without modifying existing code.
+Composite	Structural	Representing complex ExpectationSuite objects as a tree of individual or grouped expectations.	Allows uniform treatment of individual expectations and collections of expectations.
+Decorator	Structural	Dynamically adding logging, caching, or pre-processing to Validator methods or Expectation checks.	Extends object functionality without altering its core structure, promoting flexibility.
+Strategy	Behavioral	Swapping different data validation algorithms (e.g., strict vs. lenient) or profiling methods at runtime.	Defines a family of algorithms and makes them interchangeable, enhancing adaptability.
+Chain of Responsibility	Behavioral	Processing data through a series of Expectation checks, where each check handles a specific validation or passes it on.	Decouples sender and receiver of requests, allowing flexible processing pipelines.
+Observer	Behavioral	Notifying Reporter or external alerting systems when ValidationResult changes.	Establishes a one-to-many dependency, enabling automatic updates to dependents upon state changes.
+4. Framework Components: Detailed Design and Implementation
+This section delves into the specific modules and classes that constitute the custom framework, detailing their design and how they interact to form a cohesive data quality solution.
+
+Expectation Definition Module (src/my_dq_framework/expectations/)
+The core of the framework's data validation capabilities resides in the expectations module. It defines how data quality rules are expressed and executed.
+
+Base Expectation Class and Custom Expectation Development
+A fundamental element is the BaseExpectation abstract base class. All specific expectations, such as checking for null values or value ranges, will inherit from this class. This design enforces a common interface for validation methods, typically including _validate_batch for the core logic, _validate_configuration for input parameter validation, and get_validation_dependencies to declare any required metrics. This structured approach ensures that custom expectations can be defined by subclassing    
+
+BaseExpectation or existing expectations, allowing users to add specific criteria and precise evaluation logic.   
+
+The design incorporates concepts similar to Great Expectations' metric_provider, where expectations can declare dependencies on computed metrics (e.g., table.row_count, column.unique_value_count). This allows for efficient metric computation and reuse across different expectations. A well-designed    
+
+BaseExpectation with clear hooks for metric computation and configuration validation promotes a standardized and robust approach to custom expectation development, making the framework truly extensible. This structured approach, rather than ad-hoc scripting, ensures that custom logic integrates seamlessly and robustly into the overall validation engine, preventing common pitfalls like invalid parameters or missing data for checks.
+
+Considerations for a Domain-Specific Language (DSL)
+While the primary interface for defining expectations will be Python methods, the framework considers the potential for a YAML-based Domain-Specific Language (DSL) for defining Expectation Suites. This approach, inspired by Soda Core's SodaCL, could simplify the definition of numerous checks, especially for non-programmers or for managing a large volume of data quality rules. Offering both Pythonic and DSL interfaces for expectations provides a critical balance between developer flexibility and business user accessibility. Pythonic methods offer full programmatic control and expressiveness for engineers, allowing for complex logic and dynamic rule generation. However, YAML-based DSLs, like SodaCL, are often readable even for "non-programmers" and scale well for "managing hundreds of tables". By supporting both, the framework caters to different user personas and operational scales, making it more versatile and appealing for enterprise adoption where cross-functional collaboration is key for defining and understanding data quality standards.   
+
+Data Connector and Batching System (src/my_dq_framework/data_connectors/)
+The data_connectors module is responsible for abstracting the complexities of interacting with diverse data sources, providing a uniform interface for the validation engine.
+
+Interfacing with Diverse Data Sources
+The design includes an abstract BaseDataConnector class, which defines common methods for connecting to data sources (e.g., connect, get_batch). Concrete implementations will be provided for common data formats and systems, such as PandasDataConnector for in-memory DataFrames, SQLDataConnector utilizing SQLAlchemy for various relational databases, and potentially a SparkDataConnector for large-scale distributed data processing. Each specific connector will encapsulate the nuances of data loading for its respective system, ensuring that the    
+
+Validator receives data in a consistent format regardless of its origin.
+
+Efficient Data Loading and Batch Management
+The get_batch method within each connector is crucial. It allows users to specify criteria (e.g., query, partition_key, limit) to retrieve a specific Batch of data from a larger DataAsset. A key design principle is to perform "in-place data quality checks" wherever possible, pushing down computation to the data source (e.g., generating SQL queries for a database) to avoid moving large datasets into local memory. This approach is critical for achieving scalability and optimal performance with large datasets. The    
+
+DataConnector design, particularly its ability to push down computation, is the primary determinant of the framework's scalability and performance with large datasets. This directly addresses the "scalability challenges" observed in some existing tools. By leveraging the underlying data platform's processing power (e.g., SQL engines, Spark), the framework can efficiently handle "huge datasets"  by minimizing data transfer and memory consumption, making it suitable for enterprise-scale data operations.   
+
+Validation Engine (src/my_dq_framework/validator/)
+The validator module houses the core logic for executing data quality checks.
+
+Execution of Expectation Suites
+The Validator class serves as the orchestrator of the validation process. It takes a Batch of data and an ExpectationSuite as input. The Validator then iterates through each Expectation within the suite, invoking its internal validation logic (the _validate method of the Expectation) and collecting the individual results.
+
+Result Aggregation and Error Handling
+Individual Expectation results are aggregated into a comprehensive ValidationResult object. This object provides a holistic view of the validation run. The framework incorporates robust error handling within the validation process, catching exceptions that may occur during data access or expectation evaluation and logging them appropriately. The    
+
+ValidationResult object is more than just a pass/fail indicator; it is a critical debugging and auditing artifact. It clearly indicates the pass/fail status for each expectation and, crucially, provides detailed information on unexpected values, which can significantly speed up debugging data issues. This detailed output, combined with contextual logging, allows data engineers to quickly pinpoint the source of data quality problems. This directly supports "Data Pipeline Traceability" by providing the necessary audit trail and capabilities for root cause analysis, which are essential for maintaining data quality and compliance in enterprise environments.   
+
+Data Profiling Module (src/my_dq_framework/profiler/)
+The profiler module provides capabilities for automated data exploration and the initial generation of data quality rules.
+
+Automated Generation of Initial Expectation Suites
+The Profiler class analyzes a Batch of data to infer common patterns, statistical properties, and structural characteristics. Based on these observations, it automatically generates a draft ExpectationSuite. This feature significantly lowers the barrier to entry for data quality initiatives. Manually defining all expectations for a new dataset is often a time-consuming and error-prone process. By automating this initial step, the framework provides a "head-start on understanding your data and creating Expectations" , accelerating the setup phase and allowing data teams to focus on refining and customizing rules rather than discovering basic patterns. This directly contributes to optimized data management.   
+
+Statistical Analysis and Pattern Recognition
+The profiler implements various methods for comprehensive data analysis. This includes column profiling, which covers data type inference, completeness (e.g., percentage of non-null values), uniqueness, and basic descriptive statistics (min, max, mean, standard deviation). It also performs cross-field analysis to identify relationships and inconsistencies between different columns. Furthermore, the profiler incorporates pattern recognition techniques, utilizing regular expressions to validate and suggest rules for specific data types such as dates, email addresses, or identification numbers.   
+
+Data Documentation and Reporting Module (src/my_dq_framework/reporting/)
+The reporting module is dedicated to transforming technical validation results into accessible, human-readable formats.
+
+Generating Human-Readable Reports
+A Reporter class is responsible for converting ExpectationSuites and ValidationResults into various formats. The primary focus is on generating HTML reports, similar to Great Expectations' Data Docs, which are easily shareable and viewable in any web browser. Additionally, the framework can generate JSON reports for programmatic consumption and seamless integration with other data tools or dashboards.   
+
+Visualization of Validation Outcomes
+The generated reports will visually represent validation outcomes, clearly highlighting which expectations passed, which failed, and providing visual cues for unexpected values or data distributions. Data documentation serves as a crucial bridge between technical data quality efforts and their business impact. Great Expectations, for instance, explicitly aims to "create data documentation and data quality reports" and enables "collaboration with nontechnical stakeholders by sharing the Data Docs". This implies that the reports are not solely for engineers but for anyone who consumes the data. By making complex validation results human-readable, the framework promotes transparency and accountability , allowing business users to understand the quality of the data they rely on. This transparency directly leads to improved decision-making, as decisions are based on data whose quality is understood and verified.   
+
+Configuration and State Management (src/my_dq_framework/config/, src/my_dq_framework/stores/)
+Effective configuration and state management are vital for a robust and reproducible data quality framework.
+
+Centralized Configuration
+A FrameworkContext class, analogous to Great Expectations' Data Context, serves as the central hub for managing all framework configurations. This includes paths to various stores, data connector settings, and default expectation parameters. The framework will support flexible configuration methods, including direct Python code, environment variables, and potentially external YAML or JSON files, to accommodate different deployment environments.   
+
+Persistent Storage for Expectations, Results, and Metrics
+The framework incorporates ExpectationStore and ValidationResultStore classes to handle the persistence of critical artifacts. Initially, support for file system storage (e.g., structured JSON files in a dedicated directory) will be provided for simplicity and ease of setup. The design, however, allows for extensibility to enterprise-grade storage solutions such as cloud storage (AWS S3, Azure Blob Storage, Google Cloud Storage) or various databases, mirroring Great Expectations' capabilities. Decoupling configuration and persistence through dedicated "Stores" and a "Context" is fundamental for enabling reproducible data quality checks and historical trend analysis. Great Expectations uses "Stores" to keep objects like Expectation Suites and Validation Results. This means these artifacts are not ephemeral; they are persisted. By storing Expectations, the framework ensures that data quality rules are consistently applied across different runs and environments. By storing Validation Results, it enables "Validation run history"  and the ability to "gauge data quality over time" , which is crucial for monitoring trends, identifying regressions, and performing root cause analysis. This persistence is key to building a reliable and auditable data quality system.   
+
+5. Industry Best Practices and Standards for Python Libraries
+This section details the essential Python development best practices integrated into the framework's design and implementation, ensuring it is a high-quality, production-ready library.
+
+Python Package Structure and Modularity
+Recommended Directory Layout
+The framework adopts a standard Python project structure, with my-dq-framework/ as the top-level directory. The core library code resides within src/my_dq_framework/, using an underscore for the package name and a dash for the project root to clearly separate the installable package from other project files. This structure also includes a    
+
+tests/ directory for all test code, a docs/ directory for documentation, and a scripts/ directory for utility scripts. Key files at the project root include    
+
+pyproject.toml for dependency management and build configuration, README.md for project introduction and usage instructions, and a LICENSE file. A well-defined package structure and modular design are foundational for the framework's long-term maintainability and collaborative development. Great Expectations aims to "eliminate pipeline debt" , and similarly, a poorly structured internal code can lead to "library debt." Modular design "simplifies your work," "makes your project more maintainable," and "reduces duplication". By enforcing clear separation of concerns at the module level , future enhancements or bug fixes can be isolated to specific components, reducing the risk of introducing regressions and making it easier for multiple developers to contribute without conflicts.   
+
+Module Organization and Naming Conventions
+Code is organized into small, focused modules (e.g., expectations.py, data_connectors.py, validator.py) to enhance maintainability and reusability. The framework strictly adheres to PEP 8 naming conventions, using lowercase, short module names. To prevent namespace pollution and improve readability, the practice of    
+
+from module import * is avoided; instead, explicit imports or import module are preferred.   
+
+Dependency Management
+Using pyproject.toml with Poetry for Robust Dependency Resolution
+The framework utilizes pyproject.toml as the standard for project metadata and dependency declaration. This file is considered "future-proof and compatible with modern Python packaging tools," providing a standardized way to define build requirements and dependencies. Poetry is recommended as the primary dependency management tool due to its advanced features, including automatic virtual environment creation, generation of lock files for reproducible environments, and enhanced dependency resolution capabilities.   
+
+Version Pinning and Virtual Environments
+The use of virtual environments (either venv or managed by Poetry) is emphasized to isolate project dependencies, preventing conflicts with other Python projects on the system. For direct dependencies, careful use of version ranges (e.g.,    
+
+requests>=2.25,<3.0) is advocated. This approach allows for flexibility while preventing breaking changes from major releases. However, for reproducible builds, exact versions are pinned in lock files. Robust dependency management is not merely a development convenience; it is a critical operational requirement for deploying and maintaining the framework reliably across diverse environments. In production, unpredictable environments due to dependency conflicts pose a significant risk. Tools like Poetry and    
+
+pyproject.toml address this by creating "isolated environments" and "lock files" , ensuring "deterministic installation". This directly supports the "portability" requirement for a reusable library , making it easier to deploy and maintain the framework consistently across development, staging, and production systems.   
+
+Testing Strategy
+Unit, Integration, and Data-Driven Testing with pytest
+A comprehensive testing suite is implemented using the pytest framework.   
+
+Unit Tests focus on individual components in isolation, such as the logic within an Expectation or methods of a DataConnector. Mocking libraries (unittest.mock or responses) are used to simulate external dependencies, ensuring tests are fast and reliable.   
+
+Integration Tests verify the seamless interaction between different modules, for example, confirming that a DataConnector correctly interfaces with the Validator, or that the Profiler accurately generates an ExpectationSuite.   
+
+Data-Driven Tests are particularly crucial for a data quality framework. These tests utilize pytest.mark.parametrize to test expectations against a variety of data scenarios, including edge cases and samples derived from real-world data. The use of "real production data for testing scenarios" significantly enhances the reliability and accuracy of the tests. Data-driven testing, especially with production-like data, transforms data quality validation from a theoretical exercise into a pragmatic defense against real-world data anomalies. Traditional software testing focuses on code logic, but for a data quality framework, the    
+
+data itself is a primary input and source of variability. Organizations using realistic data for tests have observed a 50% increase in the accuracy of their testing results. This highlights that testing only with synthetic or ideal data is insufficient. By incorporating data-driven tests with diverse, production-representative datasets, the framework's expectations are validated against the very challenges they are designed to detect, significantly increasing confidence in its efficacy in real operational environments.   
+
+Mocking External Dependencies and Ensuring Code Coverage
+Beyond unit and integration tests, mocking libraries are extensively used to simulate external systems like databases or APIs during testing. This ensures that tests are isolated, fast, and reliable, without requiring actual external connections. The framework aims for at least 80% code coverage, with coverage reports regularly generated as part of the Continuous Integration (CI) pipeline. This practice helps identify untested critical modules and ensures comprehensive validation.   
+
+Logging and Error Handling
+Structured Logging, Appropriate Log Levels, and Log Rotation
+The framework integrates Python's standard logging module, configuring custom loggers at the module level to ensure each module logs only what it is responsible for. Appropriate log levels (DEBUG, INFO, WARNING, ERROR, CRITICAL) are used to categorize messages based on their importance and severity, with optimal levels set for development versus production environments. Structured logging, utilizing key-value pairs or JSON format, is adopted for machine-readability, easier filtering, and seamless integration with log analysis tools. The    
+
+extra parameter is used to include contextual information in log messages. To prevent log files from growing indefinitely and consuming excessive disk space, log rotation is implemented using    
+
+TimedRotatingFileHandler or RotatingFileHandler. Comprehensive and structured logging transforms error occurrences from opaque failures into actionable diagnostic data, crucial for rapid incident response and continuous improvement in data quality. Poor logging can lead to "missing critical info when debugging". In a data quality framework, failures can indicate critical data issues or framework bugs. Structured logging with contextual information  and appropriate log levels  makes logs "easily searchable" and "actionable". This allows engineers to quickly identify the root cause of failed validations , whether it is a data anomaly or a framework issue, significantly reducing "data downtime" and enabling faster resolution.   
+
+Graceful Exception Handling and Contextual Logging
+Code sections that are likely to raise exceptions are wrapped in try-except blocks to ensure graceful handling. Exceptions are logged with    
+
+exc_info=True to include full stack traces, providing detailed diagnostic information. Crucially, contextual information, such as    
+
+data_asset_name, column_name, or expectation_type, is included in log messages to aid in debugging and root cause analysis. To maintain security and privacy, strategies like redaction, conditional logging, or custom filters are employed to prevent sensitive information from being logged.   
+
+Code Quality and Maintainability
+PEP 8 Compliance, Linters, and Formatters
+Strict adherence to the PEP 8 style guide is maintained throughout the codebase to ensure consistency and readability. Linters (e.g.,    
+
+flake8, pylint, ruff) and formatters (e.g., black, isort) are integrated into the development workflow. These tools automate code style enforcement and help catch potential errors early in the development cycle.   
+
+Documentation (Docstrings, README)
+Comprehensive docstrings are written for all modules, classes, and functions, following PEP 257 standards. A clear and up-to-date    
+
+README.md file is maintained, providing a project overview, detailed installation instructions, and basic usage examples. Prioritizing code quality and comprehensive documentation is an investment in the framework's long-term viability and community adoption, beyond its functional capabilities. High-quality code is "readable, maintainable, and robust". For a library intended for reuse and potential collaboration, readability and maintainability are paramount. Consistent styling (PEP 8, linters) reduces cognitive load for developers, while good documentation (docstrings, README) lowers the learning curve and enables easier integration and contribution. This ensures that the framework remains usable and adaptable as teams and requirements evolve, avoiding the "annoyingly cumbersome" trap observed in some existing tools.   
+
+Table 3: Python Library Best Practices Checklist
+This table summarizes the critical Python development best practices applied to the framework, serving as a checklist for quality assurance and demonstrating adherence to high engineering standards.
+
+Best Practice Area	Key Practice	Implementation Detail in Framework	Benefit
+Modularity	Separation of Concerns	Distinct modules for expectations, data connectors, validator, profiler, reporting, stores, and context.	Reduces coupling, simplifies development, enhances reusability.
+Package Structure	src/ layout	Core library code in src/my_dq_framework/ with tests/, docs/, scripts/ at project root.	Clear separation of installable package; improves organization and navigation.
+Dependency Management	Poetry/pyproject.toml	Uses Poetry for dependency resolution, virtual environments, and lock file generation.	Reproducible builds, isolated environments, streamlined dependency management.
+Testing	Unit/Integration/Data-Driven Tests	Comprehensive test suite using pytest, with mocking for external systems and data-driven scenarios.	Ensures functional correctness, seamless component interaction, and reliability with real-world data.
+Logging	Structured Logging	Utilizes Python's logging module with structured (JSON) output and contextual information.	Machine-readable logs, easier debugging, better integration with log analysis tools.
+Error Handling	Graceful Exception Handling	try-except blocks with exc_info=True and contextual logging for all potential errors.	Improves application stability, provides actionable diagnostic data for rapid issue resolution.
+Code Style	PEP 8, Linters, Formatters	Adherence to PEP 8, automated checks with flake8, pylint, ruff, and auto-formatting with black, isort.	Consistent, readable code; early detection of potential errors.
+Documentation	Docstrings, README	Comprehensive docstrings for all code elements and a clear, up-to-date README.md.	Improves code understanding, reduces learning curve, facilitates collaboration.
+6. Complete Code Implementation: Modular Examples
+This section provides practical, modular code examples demonstrating the design principles discussed. Each example is concise, well-commented, and illustrates a specific component or interaction within the my-dq-framework.
+
+Overall Project Structure (my-dq-framework/)
+my-dq-framework/
+├── src/
+│   └── my_dq_framework/
+│       ├── __init__.py
+│       ├── expectations/
+│       │   ├── __init__.py
+│       │   ├── base.py              # BaseExpectation, BaseMetricProvider
+│       │   └── column_expectations.py # Example: expect_column_values_to_be_between
+│       ├── data_connectors/
+│       │   ├── __init__.py
+│       │   ├── base.py              # BaseDataConnector
+│       │   └── pandas_connector.py  # PandasDataConnector implementation
+│       ├── validator/
+│       │   ├── __init__.py
+│       │   └── validator.py         # Validator class
+│       ├── profiler/
+│       │   ├── __init__.py
+│       │   └── profiler.py          # Profiler class
+│       ├── reporting/
+│       │   ├── __init__.py
+│       │   └── html_reporter.py     # HTMLReporter
+│       ├── stores/
+│       │   ├── __init__.py
+│       │   └── file_system_store.py # FileSystemExpectationStore, FileSystemValidationResultStore
+│       └── context.py               # FrameworkContext (Singleton)
+├── tests/
+│   ├── __init__.py
+│   ├── unit/
+│   │   ├── test_expectations.py
+│   │   └── test_data_connectors.py
+│   ├── integration/
+│   │   └── test_validator.py
+│   └── data/                      # Sample data for data-driven tests
+├── docs/
+├── scripts/
+├── pyproject.toml
+├── README.md
+└── LICENSE
+pyproject.toml Example
+A basic pyproject.toml using Poetry, defining project metadata, dependencies, and development dependencies.
+
+Ini, TOML
+
+[tool.poetry]
+name = "my-dq-framework"
+version = "0.1.0"
+description = "A custom data quality framework inspired by Great Expectations."
+authors =
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = ">=3.8,<4.0"
+pandas = "^2.2.0"
+sqlalchemy = "^2.0.0"
+jinja2 = "^3.1.0"
+pydantic = "^2.7.0" # For configuration validation, if a DSL is implemented
+loguru = "^0.7.0" # A more user-friendly logging library
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.1.0"
+black = "^24.3.0"
+flake8 = "^7.0.0"
+isort = "^5.13.0"
+mypy = "^1.9.0"
+pytest-cov = "^4.1.0"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
+Core expectations module (src/my_dq_framework/expectations/base.py)
+Defines BaseExpectation (abstract class with _validate_batch, _validate_configuration, get_validation_dependencies) and BaseMetricProvider.
+
+Python
+
+import logging
+from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional, Type, Union
+
+logger = logging.getLogger(__name__)
+
+class ValidationResult:
+    """Represents the result of a single expectation validation."""
+    def __init__(self, success: bool, unexpected_values: Optional[List[Any]] = None, details: Optional] = None):
+        self.success = success
+        self.unexpected_values = unexpected_values if unexpected_values is not None else
+        self.details = details if details is not None else {}
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "success": self.success,
+            "unexpected_values": self.unexpected_values,
+            "details": self.details
+        }
+
+class ExpectationSuite:
+    """A collection of Expectations defining a data contract."""
+    def __init__(self, name: str, expectations: Optional] = None):
+        self.name = name
+        self.expectations = expectations if expectations is not None else
+
+    def add_expectation(self, expectation: 'BaseExpectation'):
+        self.expectations.append(expectation)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "expectations": [exp.to_dict() for exp in self.expectations]
+        }
+
+class BaseMetricProvider(ABC):
+    """Abstract base class for computing metrics on a batch of data."""
+    metric_name: str
+
+    @abstractmethod
+    def _compute_pandas(self, batch_data: Any, metric_domain_kwargs: Dict[str, Any]) -> Any:
+        """Compute the metric for a Pandas DataFrame."""
+        pass
+
+    # Add other backend compute methods (e.g., _compute_spark, _compute_sql) as needed
+
+class BaseExpectation(ABC):
+    """Abstract base class for all data quality expectations."""
+    expectation_type: str
+    metric_dependencies: List[str] = # Names of metrics this expectation depends on
+
+    def __init__(self, column: Optional[str] = None, **kwargs):
+        self.column = column
+        self.kwargs = kwargs
+        self._validate_configuration()
+
+    def _validate_configuration(self):
+        """Validates the input parameters for the expectation."""
+        # This method should be overridden by subclasses for specific validation logic
+        pass
+
+    def get_validation_dependencies(self, batch_data: Any) -> Dict]:
+        """
+        Returns a dictionary of metric dependencies required for validation.
+        Keys are metric names, values are dictionaries of metric_domain_kwargs.
+        """
+        deps = {}
+        # Example: if an expectation needs column.value_count, it would add it here
+        if self.column and "column.value_count" in self.metric_dependencies:
+            deps["column.value_count"] = {"column": self.column}
+        return deps
+
+    @abstractmethod
+    def _validate_batch(self, batch_data: Any, metrics: Dict[str, Any]) -> ValidationResult:
+        """
+        Abstract method to be implemented by subclasses for specific validation logic.
+        `batch_data` is the data to validate, `metrics` contains pre-computed metrics.
+        """
+        pass
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Returns a dictionary representation of the expectation."""
+        return {
+            "expectation_type": self.expectation_type,
+            "column": self.column,
+            "kwargs": self.kwargs
+        }
+Example Custom Expectation (src/my_dq_framework/expectations/column_expectations.py)
+Implements ExpectColumnValuesToBeBetween inheriting from BaseExpectation, demonstrating how to define validation logic and metric dependencies.
+
+Python
+
+import pandas as pd
+from typing import Any, Dict, List, Optional
+from my_dq_framework.expectations.base import BaseExpectation, ValidationResult, BaseMetricProvider
+
+class ColumnValueCount(BaseMetricProvider):
+    """Metric provider for counting non-null values in a column."""
+    metric_name = "column.value_count"
+
+    def _compute_pandas(self, batch_data: pd.DataFrame, metric_domain_kwargs: Dict[str, Any]) -> int:
+        column = metric_domain_kwargs.get("column")
+        if column not in batch_data.columns:
+            raise ValueError(f"Column '{column}' not found in batch data.")
+        return batch_data[column].count()
+
+class ExpectColumnValuesToBeBetween(BaseExpectation):
+    """Expectation that column values are between a min and max value (inclusive)."""
+    expectation_type = "expect_column_values_to_be_between"
+    metric_dependencies = ["column.value_count"] # Example dependency, though not strictly needed for this simple check
+
+    def __init__(self, column: str, min_value: Optional[Union[int, float]] = None, max_value: Optional[Union[int, float]] = None, **kwargs):
+        super().__init__(column=column, min_value=min_value, max_value=max_value, **kwargs)
+        self.min_value = min_value
+        self.max_value = max_value
+
+    def _validate_configuration(self):
+        """Validates that min_value and max_value are set correctly."""
+        if self.min_value is None and self.max_value is None:
+            raise ValueError("Must provide at least one of 'min_value' or 'max_value'.")
+        if self.min_value is not None and self.max_value is not None and self.min_value > self.max_value:
+            raise ValueError("'min_value' cannot be greater than 'max_value'.")
+
+    def _validate_batch(self, batch_data: pd.DataFrame, metrics: Dict[str, Any]) -> ValidationResult:
+        if self.column not in batch_data.columns:
+            return ValidationResult(success=False, details={"error": f"Column '{self.column}' not found."})
+
+        column_series = batch_data[self.column]
+        unexpected_values =
+
+        if self.min_value is not None:
+            unexpected_values.extend(column_series[column_series < self.min_value].tolist())
+        if self.max_value is not None:
+            unexpected_values.extend(column_series[column_series > self.max_value].tolist())
+
+        success = not bool(unexpected_values)
+        return ValidationResult(success=success, unexpected_values=list(set(unexpected_values)))
+
+class ExpectColumnToExist(BaseExpectation):
+    """Expectation that a column exists in the dataset."""
+    expectation_type = "expect_column_to_exist"
+
+    def __init__(self, column: str, **kwargs):
+        super().__init__(column=column, **kwargs)
+
+    def _validate_configuration(self):
+        if not isinstance(self.column, str) or not self.column:
+            raise ValueError("Column name must be a non-empty string.")
+
+    def _validate_batch(self, batch_data: pd.DataFrame, metrics: Dict[str, Any]) -> ValidationResult:
+        success = self.column in batch_data.columns
+        details = {"column_found": success}
+        if not success:
+            details["error"] = f"Column '{self.column}' does not exist in the dataset."
+        return ValidationResult(success=success, details=details)
+
+class ExpectColumnValuesToNotBeNull(BaseExpectation):
+    """Expectation that column values are not null."""
+    expectation_type = "expect_column_values_to_not_be_null"
+
+    def __init__(self, column: str, **kwargs):
+        super().__init__(column=column, **kwargs)
+
+    def _validate_configuration(self):
+        if not isinstance(self.column, str) or not self.column:
+            raise ValueError("Column name must be a non-empty string.")
+
+    def _validate_batch(self, batch_data: pd.DataFrame, metrics: Dict[str, Any]) -> ValidationResult:
+        if self.column not in batch_data.columns:
+            return ValidationResult(success=False, details={"error": f"Column '{self.column}' not found."})
+
+        null_values = batch_data[self.column].isnull()
+        unexpected_values = batch_data[self.column][null_values].tolist()
+        success = not null_values.any()
+
+        return ValidationResult(success=success, unexpected_values=unexpected_values)
+data_connectors module (src/my_dq_framework/data_connectors/pandas_connector.py)
+Implements PandasDataConnector inheriting from BaseDataConnector, showing how to load data into a Pandas DataFrame and create a Batch.
+
+Python
+
+import pandas as pd
+from abc import ABC, abstractmethod
+from typing import Any, Dict, Optional
+
+class Batch:
+    """Represents a specific selection of data from a Data Asset."""
+    def __init__(self, data: Any, data_asset_name: str, batch_id: str):
+        self.data = data
+        self.data_asset_name = data_asset_name
+        self.batch_id = batch_id
+
+class BaseDataConnector(ABC):
+    """Abstract base class for connecting to various data sources."""
+    def __init__(self, name: str, **kwargs):
+        self.name = name
+        self.kwargs = kwargs
+
+    @abstractmethod
+    def connect(self) -> Any:
+        """Establishes a connection to the data source."""
+        pass
+
+    @abstractmethod
+    def get_batch(self, data_asset_name: str, **batch_kwargs) -> Batch:
+        """Retrieves a specific batch of data from the data asset."""
+        pass
+
+class PandasDataConnector(BaseDataConnector):
+    """Data Connector for Pandas DataFrames (in-memory or from file paths)."""
+    def __init__(self, name: str, **kwargs):
+        super().__init__(name, **kwargs)
+        self._data_cache: Dict = {} # For in-memory data assets
+
+    def connect(self) -> None:
+        """No explicit connection needed for in-memory Pandas, but can be extended for file paths."""
+        pass
+
+    def get_batch(self, data_asset_name: str, **batch_kwargs) -> Batch:
+        """
+        Retrieves a Pandas DataFrame batch.
+        batch_kwargs can include 'dataframe' for in-memory, or 'path', 'reader_method' for file.
+        """
+        data = None
+        if "dataframe" in batch_kwargs:
+            data = batch_kwargs["dataframe"]
+            if not isinstance(data, pd.DataFrame):
+                raise TypeError("Provided 'dataframe' must be a Pandas DataFrame.")
+            self._data_cache[data_asset_name] = data # Cache for reuse
+        elif "path" in batch_kwargs and "reader_method" in batch_kwargs:
+            path = batch_kwargs["path"]
+            reader_method = batch_kwargs["reader_method"]
+            try:
+                if reader_method == "csv":
+                    data = pd.read_csv(path, **{k: v for k, v in batch_kwargs.items() if k not in ["path", "reader_method"]})
+                elif reader_method == "parquet":
+                    data = pd.read_parquet(path, **{k: v for k, v in batch_kwargs.items() if k not in ["path", "reader_method"]})
+                else:
+                    raise ValueError(f"Unsupported reader_method: {reader_method}")
+                self._data_cache[data_asset_name] = data
+            except Exception as e:
+                raise IOError(f"Failed to load data from {path} using {reader_method}: {e}")
+        elif data_asset_name in self._data_cache:
+            data = self._data_cache[data_asset_name]
+        else:
+            raise ValueError(f"No data provided for data_asset_name '{data_asset_name}'. "
+                             "Provide 'dataframe' or 'path' and 'reader_method'.")
+
+        batch_id = f"{data_asset_name}_{pd.Timestamp.now().strftime('%Y%m%d%H%M%S')}"
+        return Batch(data=data, data_asset_name=data_asset_name, batch_id=batch_id)
+validator module (src/my_dq_framework/validator/validator.py)
+Implements the Validator class, demonstrating how it takes a Batch and an ExpectationSuite, executes expectations, and aggregates results.
+
+Python
+
+import logging
+from typing import Dict, Any, List
+from my_dq_framework.expectations.base import ExpectationSuite, ValidationResult, BaseMetricProvider
+from my_dq_framework.data_connectors.pandas_connector import Batch
+from my_dq_framework.expectations.column_expectations import ColumnValueCount # Import any specific metric providers
+
+logger = logging.getLogger(__name__)
+
+class ValidationResultSuite:
+    """Aggregated results for an entire Expectation Suite."""
+    def __init__(self, suite_name: str, batch_id: str, results: List, metrics: Dict[str, Any]):
+        self.suite_name = suite_name
+        self.batch_id = batch_id
+        self.results = results
+        self.metrics = metrics
+        self.success = all(res.success for res in results)
+
+    def to_dict(self) -> Dict[str, Any]:
+        return {
+            "suite_name": self.suite_name,
+            "batch_id": self.batch_id,
+            "success": self.success,
+            "results": [res.to_dict() for res in self.results],
+            "metrics": self.metrics
+        }
+
+class Validator:
+    """
+    The core component responsible for executing Expectation Suites against data Batches.
+    Manages metric computation and result aggregation.
+    """
+    def __init__(self, batch: Batch):
+        self.batch = batch
+        self.metrics_cache: Dict[str, Any] = {}
+        self.metric_providers: Dict] = {
+            "column.value_count": ColumnValueCount # Register all available metric providers here
+            # Add other metric providers as they are defined
+        }
+
+    def _get_metric(self, metric_name: str, metric_domain_kwargs: Dict[str, Any]) -> Any:
+        """Computes or retrieves a metric from the cache."""
+        metric_key = f"{metric_name}-{hash(frozenset(metric_domain_kwargs.items()))}"
+        if metric_key in self.metrics_cache:
+            return self.metrics_cache[metric_key]
+
+        if metric_name not in self.metric_providers:
+            raise ValueError(f"Metric provider for '{metric_name}' not found.")
+
+        provider_class = self.metric_providers[metric_name]
+        provider_instance = provider_class() # Metric providers are stateless, can be instantiated on demand
+
+        # Currently only Pandas backend is implemented
+        if isinstance(self.batch.data, pd.DataFrame):
+            metric_value = provider_instance._compute_pandas(self.batch.data, metric_domain_kwargs)
+        else:
+            raise NotImplementedError(f"Unsupported data type for metric computation: {type(self.batch.data)}")
+
+        self.metrics_cache[metric_key] = metric_value
+        return metric_value
+
+    def validate(self, expectation_suite: ExpectationSuite) -> ValidationResultSuite:
+        """
+        Executes the given ExpectationSuite against the Validator's batch.
+        """
+        validation_results: List =
+        all_metrics_computed: Dict[str, Any] = {}
+
+        logger.info(f"Starting validation for batch '{self.batch.batch_id}' with suite '{expectation_suite.name}'")
+
+        for expectation in expectation_suite.expectations:
+            try:
+                # 1. Gather metric dependencies for the current expectation
+                expected_metric_deps = expectation.get_validation_dependencies(self.batch.data)
+                current_expectation_metrics: Dict[str, Any] = {}
+
+                for metric_name, metric_kwargs in expected_metric_deps.items():
+                    metric_value = self._get_metric(metric_name, metric_kwargs)
+                    current_expectation_metrics[metric_name] = metric_value
+                    all_metrics_computed[f"{metric_name}_{hash(frozenset(metric_kwargs.items()))}"] = metric_value
+
+                # 2. Execute expectation validation
+                result = expectation._validate_batch(self.batch.data, current_expectation_metrics)
+                validation_results.append(result)
+                log_level = logging.INFO if result.success else logging.ERROR
+                logger.log(log_level, f"Expectation '{expectation.expectation_type}' on column '{expectation.column}' {'PASSED' if result.success else 'FAILED'}")
+                if not result.success and result.unexpected_values:
+                    logger.debug(f"Unexpected values: {result.unexpected_values}")
+
+            except Exception as e:
+                logger.error(f"Error validating expectation '{expectation.expectation_type}' on column '{expectation.column}': {e}", exc_info=True)
+                validation_results.append(ValidationResult(success=False, details={"error": str(e)}))
+
+        logger.info(f"Validation for batch '{self.batch.batch_id}' completed.")
+        return ValidationResultSuite(
+            suite_name=expectation_suite.name,
+            batch_id=self.batch.batch_id,
+            results=validation_results,
+            metrics=all_metrics_computed
+        )
+profiler module (src/my_dq_framework/profiler/profiler.py)
+Provides a simplified Profiler class that can generate a basic ExpectationSuite (e.g., expect_column_to_exist, expect_column_values_to_not_be_null) for a given Pandas DataFrame.
+
+Python
+
+import pandas as pd
+from my_dq_framework.expectations.base import ExpectationSuite
+from my_dq_framework.expectations.column_expectations import ExpectColumnToExist, ExpectColumnValuesToNotBeNull
+from my_dq_framework.data_connectors.pandas_connector import Batch
+from typing import List
+
+class Profiler:
+    """
+    Automatically generates a basic ExpectationSuite by analyzing a Batch of data.
+    """
+    def __init__(self):
+        pass
+
+    def profile_batch(self, batch: Batch, suite_name: str = "default_profile_suite") -> ExpectationSuite:
+        """
+        Analyzes a batch (Pandas DataFrame) and generates a basic ExpectationSuite.
+        """
+        if not isinstance(batch.data, pd.DataFrame):
+            raise TypeError("Profiler currently supports only Pandas DataFrames.")
+
+        suite = ExpectationSuite(name=suite_name)
+        df = batch.data
+
+        # Add expect_column_to_exist for all columns
+        for column in df.columns:
+            suite.add_expectation(ExpectColumnToExist(column=column))
+
+        # Add expect_column_values_to_not_be_null for columns with low null count
+        for column in df.columns:
+            if df[column].isnull().sum() == 0: # If no nulls found, expect no nulls
+                suite.add_expectation(ExpectColumnValuesToNotBeNull(column=column))
+            # Could add more sophisticated profiling here, e.g., value ranges, unique counts, types
+
+        return suite
+reporting module (src/my_dq_framework/reporting/html_reporter.py)
+Outlines a basic HtmlReporter class that uses a templating engine (e.g., Jinja2) to render ValidationResult objects into a simple HTML report.
+
+Python
+
+from jinja2 import Environment, FileSystemLoader
+from my_dq_framework.validator.validator import ValidationResultSuite
+from typing import Dict, Any
+import os
+
+class HtmlReporter:
+    """Generates human-readable HTML reports from ValidationResultSuite."""
+    def __init__(self, template_dir: str = None):
+        if template_dir is None:
+            # Default to a simple template within the package or a common location
+            current_dir = os.path.dirname(os.path.abspath(__file__))
+            template_dir = os.path.join(current_dir, "templates")
+            if not os.path.exists(template_dir):
+                os.makedirs(template_dir)
+                # Create a very basic template file for demonstration
+                with open(os.path.join(template_dir, "report_template.html"), "w") as f:
+                    f.write("""
+                    <!DOCTYPE html>
+                    <html>
+                    <head>
+                        <title>Data Quality Report - {{ report.suite_name }}</title>
+                        <style>
+                            body { font-family: Arial, sans-serif; margin: 20px; }
+                            h1 { color: #333; }
+                           .summary { background-color: #f2f2f2; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+                           .success { color: green; font-weight: bold; }
+                           .failure { color: red; font-weight: bold; }
+                            table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+                            th, td { border: 1px solid #ddd; padding: 8px; text-align: left; }
+                            th { background-color: #eee; }
+                        </style>
+                    </head>
+                    <body>
+                        <h1>Data Quality Report</h1>
+                        <div class="summary">
+                            <p>Suite Name: <strong>{{ report.suite_name }}</strong></p>
+                            <p>Batch ID: <strong>{{ report.batch_id }}</strong></p>
+                            <p>Overall Status: <span class="{{ 'success' if report.success else 'failure' }}">{{ 'PASSED' if report.success else 'FAILED' }}</span></p>
+                        </div>
+
+                        <h2>Expectation Results</h2>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Expectation Type</th>
+                                    <th>Column</th>
+                                    <th>Status</th>
+                                    <th>Unexpected Values</th>
+                                    <th>Details</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for result in report.results %}
+                                <tr>
+                                    <td>{{ result.details.expectation_type if result.details.expectation_type else 'N/A' }}</td>
+                                    <td>{{ result.details.column if result.details.column else 'N/A' }}</td>
+                                    <td class="{{ 'success' if result.success else 'failure' }}">{{ 'PASSED' if result.success else 'FAILED' }}</td>
+                                    <td>
+                                        {% if result.unexpected_values %}
+                                            <pre>{{ result.unexpected_values | tojson(indent=2) }}</pre>
+                                        {% else %}
+                                            None
+                                        {% endif %}
+                                    </td>
+                                    <td><pre>{{ result.details | tojson(indent=2) }}</pre></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+
+                        {% if report.metrics %}
+                        <h2>Computed Metrics</h2>
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Metric Name</th>
+                                    <th>Value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for key, value in report.metrics.items() %}
+                                <tr>
+                                    <td>{{ key }}</td>
+                                    <td>{{ value }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        {% endif %}
+                    </body>
+                    </html>
+                    """)
+        self.env = Environment(loader=FileSystemLoader(template_dir))
+        self.template = self.env.get_template("report_template.html")
+
+    def generate_report(self, validation_result_suite: ValidationResultSuite, output_path: str):
+        """Generates an HTML report and saves it to the specified path."""
+        report_data = validation_result_suite.to_dict()
+        # Add expectation type and column to each result's details for easier rendering
+        for i, result in enumerate(validation_result_suite.results):
+            if i < len(validation_result_suite.results): # Ensure index is valid
+                expectation = validation_result_suite.results[i] # This is wrong, should get from original suite
+                # For simplicity in this example, we'll assume expectation_type and column are in result.details
+                # In a real implementation, you'd pass the original expectation objects or more structured data
+                if "expectation_type" not in result.details and "expectation_type" in expectation_suite_for_report.expectations[i].to_dict():
+                    result.details["expectation_type"] = expectation_suite_for_report.expectations[i].to_dict()["expectation_type"]
+                if "column" not in result.details and "column" in expectation_suite_for_report.expectations[i].to_dict():
+                    result.details["column"] = expectation_suite_for_report.expectations[i].to_dict()["column"]
+
+        html_content = self.template.render(report=report_data)
+        with open(output_path, "w") as f:
+            f.write(html_content)
+        print(f"Report generated at: {output_path}")
+
+# Global variable for the expectation suite used in reporter, for this example's simplicity
+# In a real system, the reporter would receive the full ExpectationSuite object or a more comprehensive data structure.
+expectation_suite_for_report = None
+context module (src/my_dq_framework/context.py)
+Implements the FrameworkContext as a Singleton, managing references to data connectors, stores, and other configurations.
+
+Python
+
+import os
+import json
+import logging
+from typing import Dict, Any, Type, Optional
+from my_dq_framework.data_connectors.base import BaseDataConnector
+from my_dq_framework.stores.file_system_store import FileSystemExpectationStore, FileSystemValidationResultStore
+from my_dq_framework.expectations.base import ExpectationSuite
+from my_dq_framework.validator.validator import ValidationResultSuite
+
+logger = logging.getLogger(__name__)
+
+class FrameworkContext:
+    """
+    The central configuration object for the data quality framework.
+    Implemented as a Singleton to ensure a single, consistent state.
+    """
+    _instance: Optional['FrameworkContext'] = None
+    _initialized: bool = False
+
+    def __new__(cls, *args, **kwargs):
+        if cls._instance is None:
+            cls._instance = super().__new__(cls)
+        return cls._instance
+
+    def __init__(self, project_root_dir: str = ".", config: Optional] = None):
+        if not self._initialized:
+            self.project_root_dir = os.path.abspath(project_root_dir)
+            self.config = config if config is not None else {}
+            self._data_connectors: Dict = {}
+            self._expectation_store: Optional = None
+            self._validation_result_store: Optional = None
+            self._initialized = True
+            self._setup_default_stores()
+            logger.info("FrameworkContext initialized.")
+
+    def _setup_default_stores(self):
+        """Sets up default file system stores based on project_root_dir."""
+        expectations_dir = os.path.join(self.project_root_dir, "dq_artifacts", "expectations")
+        validation_results_dir = os.path.join(self.project_root_dir, "dq_artifacts", "validation_results")
+
+        os.makedirs(expectations_dir, exist_ok=True)
+        os.makedirs(validation_results_dir, exist_ok=True)
+
+        self._expectation_store = FileSystemExpectationStore(base_dir=expectations_dir)
+        self._validation_result_store = FileSystemValidationResultStore(base_dir=validation_results_dir)
+        logger.info(f"Default FileSystem stores set up at: {expectations_dir}, {validation_results_dir}")
+
+    def register_data_connector(self, connector_name: str, connector_class: Type, **kwargs):
+        """Registers a data connector with the context."""
+        if connector_name in self._data_connectors:
+            logger.warning(f"Data connector '{connector_name}' already registered. Overwriting.")
+        self._data_connectors[connector_name] = connector_class(name=connector_name, **kwargs)
+        logger.info(f"Data connector '{connector_name}' registered.")
+
+    def get_data_connector(self, connector_name: str) -> BaseDataConnector:
+        """Retrieves a registered data connector."""
+        connector = self._data_connectors.get(connector_name)
+        if not connector:
+            raise ValueError(f"Data connector '{connector_name}' not found.")
+        return connector
+
+    def save_expectation_suite(self, suite: ExpectationSuite):
+        """Saves an ExpectationSuite to the configured store."""
+        if not self._expectation_store:
+            raise RuntimeError("Expectation store not configured.")
+        self._expectation_store.save_suite(suite)
+        logger.info(f"Expectation Suite '{suite.name}' saved.")
+
+    def load_expectation_suite(self, suite_name: str) -> ExpectationSuite:
+        """Loads an ExpectationSuite from the configured store."""
+        if not self._expectation_store:
+            raise RuntimeError("Expectation store not configured.")
+        logger.info(f"Loading Expectation Suite '{suite_name}'.")
+        return self._expectation_store.load_suite(suite_name)
+
+    def save_validation_result(self, result_suite: ValidationResultSuite):
+        """Saves a ValidationResultSuite to the configured store."""
+        if not self._validation_result_store:
+            raise RuntimeError("Validation result store not configured.")
+        self._validation_result_store.save_result(result_suite)
+        logger.info(f"Validation Result for batch '{result_suite.batch_id}' saved.")
+
+    def get_validation_results(self, suite_name: str = None, batch_id: str = None) -> List:
+        """Retrieves validation results from the configured store."""
+        if not self._validation_result_store:
+            raise RuntimeError("Validation result store not configured.")
+        return self._validation_result_store.get_results(suite_name=suite_name, batch_id=batch_id)
+
+    def reset(self):
+        """Resets the singleton instance for testing/reinitialization purposes."""
+        FrameworkContext._instance = None
+        FrameworkContext._initialized = False
+        logger.info("FrameworkContext reset.")
+
+# Simple file system stores for persistence (src/my_dq_framework/stores/file_system_store.py)
+# This is a placeholder for actual implementation
+Python
+
+# src/my_dq_framework/stores/file_system_store.py
+import os
+import json
+from typing import List, Optional
+from my_dq_framework.expectations.base import ExpectationSuite, BaseExpectation, ValidationResult
+from my_dq_framework.validator.validator import ValidationResultSuite
+import logging
+
+logger = logging.getLogger(__name__)
+
+class FileSystemExpectationStore:
+    """Manages persistence of Expectation Suites on the file system."""
+    def __init__(self, base_dir: str):
+        self.base_dir = base_dir
+        os.makedirs(self.base_dir, exist_ok=True)
+
+    def _get_suite_path(self, suite_name: str) -> str:
+        return os.path.join(self.base_dir, f"{suite_name}.json")
+
+    def save_suite(self, suite: ExpectationSuite):
+        suite_path = self._get_suite_path(suite.name)
+        with open(suite_path, "w") as f:
+            json.dump(suite.to_dict(), f, indent=2)
+        logger.debug(f"Expectation Suite saved to {suite_path}")
+
+    def load_suite(self, suite_name: str) -> ExpectationSuite:
+        suite_path = self._get_suite_path(suite_name)
+        if not os.path.exists(suite_path):
+            raise FileNotFoundError(f"Expectation Suite '{suite_name}' not found at {suite_path}")
+        with open(suite_path, "r") as f:
+            suite_data = json.load(f)
+        
+        # Reconstruct ExpectationSuite and Expectations from dictionary
+        expectations =
+        # This part would require a registry to map expectation_type string back to class
+        # For simplicity in this example, we'll just load the dict representation
+        # In a real system, you'd dynamically load the correct Expectation class
+        from my_dq_framework.expectations.column_expectations import ExpectColumnValuesToBeBetween, ExpectColumnToExist, ExpectColumnValuesToNotBeNull
+        expectation_map = {
+            "expect_column_values_to_be_between": ExpectColumnValuesToBeBetween,
+            "expect_column_to_exist": ExpectColumnToExist,
+            "expect_column_values_to_not_be_null": ExpectColumnValuesToNotBeNull
+        }
+
+        for exp_data in suite_data.get("expectations",):
+            exp_type = exp_data.get("expectation_type")
+            if exp_type in expectation_map:
+                exp_class = expectation_map[exp_type]
+                try:
+                    # Reconstruct kwargs carefully
+                    kwargs = {k: v for k, v in exp_data.get("kwargs", {}).items()}
+                    if "column" in exp_data:
+                        kwargs["column"] = exp_data["column"]
+                    expectations.append(exp_class(**kwargs))
+                except Exception as e:
+                    logger.error(f"Failed to reconstruct expectation {exp_type}: {e}")
+            else:
+                logger.warning(f"Unknown expectation type '{exp_type}' during loading. Skipping.")
+
+        return ExpectationSuite(name=suite_data["name"], expectations=expectations)
+
+
+class FileSystemValidationResultStore:
+    """Manages persistence of Validation Results on the file system."""
+    def __init__(self, base_dir: str):
+        self.base_dir = base_dir
+        os.makedirs(self.base_dir, exist_ok=True)
+
+    def _get_result_path(self, batch_id: str) -> str:
+        return os.path.join(self.base_dir, f"{batch_id}.json")
+
+    def save_result(self, result_suite: ValidationResultSuite):
+        result_path = self._get_result_path(result_suite.batch_id)
+        with open(result_path, "w") as f:
+            json.dump(result_suite.to_dict(), f, indent=2)
+        logger.debug(f"Validation Result saved to {result_path}")
+
+    def get_results(self, suite_name: str = None, batch_id: str = None) -> List:
+        results =
+        for filename in os.listdir(self.base_dir):
+            if filename.endswith(".json"):
+                file_path = os.path.join(self.base_dir, filename)
+                with open(file_path, "r") as f:
+                    data = json.load(f)
+                    # Reconstruct ValidationResultSuite
+                    if (suite_name is None or data.get("suite_name") == suite_name) and \
+                       (batch_id is None or data.get("batch_id") == batch_id):
+                        
+                        # Reconstruct individual ValidationResult objects
+                        individual_results =,
+                                unexpected_values=res_data.get("unexpected_values"),
+                                details=res_data.get("details")
+                            ) for res_data in data.get("results",)
+                        ]
+                        results.append(ValidationResultSuite(
+                            suite_name=data["suite_name"],
+                            batch_id=data["batch_id"],
+                            results=individual_results,
+                            metrics=data.get("metrics", {})
+                        ))
+        return results
+Example Usage Script (example_usage.py)
+A script demonstrating the end-to-end workflow.
+
+Python
+
+import pandas as pd
+import logging
+import os
+import shutil
+
+# Configure basic logging for the example
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+# Import framework components
+from my_dq_framework.context import FrameworkContext
+from my_dq_framework.data_connectors.pandas_connector import PandasDataConnector
+from my_dq_framework.expectations.base import ExpectationSuite
+from my_dq_framework.expectations.column_expectations import ExpectColumnValuesToBeBetween, ExpectColumnToExist, ExpectColumnValuesToNotBeNull
+from my_dq_framework.validator.validator import Validator
+from my_dq_framework.profiler.profiler import Profiler
+from my_dq_framework.reporting.html_reporter import HtmlReporter, expectation_suite_for_report # Import global variable for demo
+
+# --- Setup: Clean up previous run artifacts ---
+project_root = "."
+dq_artifacts_dir = os.path.join(project_root, "dq_artifacts")
+if os.path.exists(dq_artifacts_dir):
+    shutil.rmtree(dq_artifacts_dir)
+    logger.info(f"Cleaned up previous artifacts in {dq_artifacts_dir}")
+
+# --- Step 1: Initialize FrameworkContext (Singleton) ---
+# This will also set up default file system stores
+context = FrameworkContext(project_root_dir=project_root)
+
+# --- Step 2: Prepare Sample Data ---
+data_good = pd.DataFrame({
+    "id": ,
+    "name":,
+    "age": ,
+    "city":
+})
+
+data_bad = pd.DataFrame({
+    "id": [1, 2, 3, None, 5], # Null ID
+    "name":,
+    "age": , # Age 150 is out of range
+    "zip_code": ["10001", "90210", "60601", "94105", "02108"] # Missing 'city' column
+})
+
+# --- Step 3: Register Data Connector ---
+context.register_data_connector("my_pandas_connector", PandasDataConnector)
+pandas_connector = context.get_data_connector("my_pandas_connector")
+
+# --- Step 4: Define Expectation Suite ---
+# Option A: Manually define
+my_suite = ExpectationSuite(name="customer_data_quality_suite")
+my_suite.add_expectation(ExpectColumnToExist(column="id"))
+my_suite.add_expectation(ExpectColumnToExist(column="name"))
+my_suite.add_expectation(ExpectColumnToExist(column="age"))
+my_suite.add_expectation(ExpectColumnToExist(column="city"))
+my_suite.add_expectation(ExpectColumnValuesToNotBeNull(column="id"))
+my_suite.add_expectation(ExpectColumnValuesToBeBetween(column="age", min_value=18, max_value=100))
+
+# Option B: Profile data to generate a suite (for data_good)
+profiler = Profiler()
+profiled_suite = profiler.profile_batch(pandas_connector.get_batch(data_asset_name="good_data_asset", dataframe=data_good),
+                                        suite_name="profiled_good_data_suite")
+logger.info(f"Profiled suite generated with {len(profiled_suite.expectations)} expectations.")
+
+# --- Step 5: Save Expectation Suite (Optional, but good practice) ---
+context.save_expectation_suite(my_suite)
+context.save_expectation_suite(profiled_suite)
+
+# --- Step 6: Load Expectation Suite (if needed) ---
+# loaded_suite = context.load_expectation_suite("customer_data_quality_suite")
+# logger.info(f"Loaded suite '{loaded_suite.name}' with {len(loaded_suite.expectations)} expectations.")
+
+# --- Step 7: Perform Validation ---
+# Set the global expectation_suite_for_report for the HtmlReporter (demonstration purpose)
+expectation_suite_for_report = my_suite
+
+logger.info("\n--- Validating GOOD Data ---")
+good_data_batch = pandas_connector.get_batch(data_asset_name="customer_data_good", dataframe=data_good)
+validator_good = Validator(batch=good_data_batch)
+validation_result_good = validator_good.validate(my_suite)
+logger.info(f"Good Data Validation Status: {'PASSED' if validation_result_good.success else 'FAILED'}")
+
+logger.info("\n--- Validating BAD Data ---")
+bad_data_batch = pandas_connector.get_batch(data_asset_name="customer_data_bad", dataframe=data_bad)
+validator_bad = Validator(batch=bad_data_batch)
+validation_result_bad = validator_bad.validate(my_suite)
+logger.info(f"Bad Data Validation Status: {'PASSED' if validation_result_bad.success else 'FAILED'}")
+
+# --- Step 8: Save Validation Results ---
+context.save_validation_result(validation_result_good)
+context.save_validation_result(validation_result_bad)
+
+# --- Step 9: Generate Data Docs (HTML Report) ---
+reporter = HtmlReporter()
+output_report_good_path = os.path.join(project_root, "dq_artifacts", "reports", "good_data_report.html")
+output_report_bad_path = os.path.join(project_root, "dq_artifacts", "reports", "bad_data_report.html")
+
+os.makedirs(os.path.dirname(output_report_good_path), exist_ok=True)
+
+reporter.generate_report(validation_result_good, output_report_good_path)
+reporter.generate_report(validation_result_bad, output_report_bad_path)
+
+logger.info("\n--- End of Demonstration ---")
+logger.info(f"Check reports: {output_report_good_path} and {output_report_bad_path}")
+
+# --- Step 10: Retrieve historical results (Optional) ---
+# all_results = context.get_validation_results()
+# logger.info(f"Total historical validation runs found: {len(all_results)}")
+# failed_runs = [r for r in all_results if not r.success]
+# logger.info(f"Total failed runs: {len(failed_runs)}")
+
+Basic Test Cases (tests/unit/test_expectations.py, tests/integration/test_validator.py)
+Simple pytest examples for unit testing an expectation and an integration test for the validator.
+
+Python
+
+# tests/unit/test_expectations.py
+import pytest
+import pandas as pd
+from my_dq_framework.expectations.column_expectations import ExpectColumnValuesToBeBetween, ExpectColumnToExist, ExpectColumnValuesToNotBeNull
+from my_dq_framework.expectations.base import ValidationResult
+
+def test_expect_column_values_to_be_between_success():
+    df = pd.DataFrame({"col": })
+    expectation = ExpectColumnValuesToBeBetween(column="col", min_value=5, max_value=35)
+    result = expectation._validate_batch(df, metrics={})
+    assert result.success
+    assert not result.unexpected_values
+
+def test_expect_column_values_to_be_between_failure_out_of_range():
+    df = pd.DataFrame({"col": })
+    expectation = ExpectColumnValuesToBeBetween(column="col", min_value=5, max_value=35)
+    result = expectation._validate_batch(df, metrics={})
+    assert not result.success
+    assert result.unexpected_values == 
+
+def test_expect_column_to_exist_success():
+    df = pd.DataFrame({"col_a": , "col_b": })
+    expectation = ExpectColumnToExist(column="col_a")
+    result = expectation._validate_batch(df, metrics={})
+    assert result.success
+
+def test_expect_column_to_exist_failure():
+    df = pd.DataFrame({"col_a": })
+    expectation = ExpectColumnToExist(column="non_existent_col")
+    result = expectation._validate_batch(df, metrics={})
+    assert not result.success
+
+def test_expect_column_values_to_not_be_null_success():
+    df = pd.DataFrame({"col": })
+    expectation = ExpectColumnValuesToNotBeNull(column="col")
+    result = expectation._validate_batch(df, metrics={})
+    assert result.success
+    assert not result.unexpected_values
+
+def test_expect_column_values_to_not_be_null_failure():
+    df = pd.DataFrame({"col": [1, None, 3]})
+    expectation = ExpectColumnValuesToNotBeNull(column="col")
+    result = expectation._validate_batch(df, metrics={})
+    assert not result.success
+    assert pd.isna(result.unexpected_values) # Check for NaN/None correctly
+Python
+
+# tests/integration/test_validator.py
+import pytest
+import pandas as pd
+from my_dq_framework.data_connectors.pandas_connector import Batch
+from my_dq_framework.expectations.base import ExpectationSuite
+from my_dq_framework.expectations.column_expectations import ExpectColumnToExist, ExpectColumnValuesToNotBeNull, ExpectColumnValuesToBeBetween
+from my_dq_framework.validator.validator import Validator
+
+@pytest.fixture
+def sample_dataframe_good():
+    return pd.DataFrame({
+        "id": ,
+        "name":,
+        "age": 
+    })
+
+@pytest.fixture
+def sample_dataframe_bad():
+    return pd.DataFrame({
+        "id": [1, None, 3], # Null value
+        "name":,
+        "age":  # Out of range
+    })
+
+def test_validator_with_good_data(sample_dataframe_good):
+    batch = Batch(data=sample_dataframe_good, data_asset_name="test_data", batch_id="1")
+    suite = ExpectationSuite(name="test_suite")
+    suite.add_expectation(ExpectColumnToExist(column="id"))
+    suite.add_expectation(ExpectColumnValuesToNotBeNull(column="id"))
+    suite.add_expectation(ExpectColumnValuesToBeBetween(column="age", min_value=18, max_value=100))
+
+    validator = Validator(batch=batch)
+    result_suite = validator.validate(suite)
+
+    assert result_suite.success
+    assert len(result_suite.results) == 3
+    for res in result_suite.results:
+        assert res.success
+
+def test_validator_with_bad_data(sample_dataframe_bad):
+    batch = Batch(data=sample_dataframe_bad, data_asset_name="test_data_bad", batch_id="2")
+    suite = ExpectationSuite(name="test_suite_bad")
+    suite.add_expectation(ExpectColumnToExist(column="id"))
+    suite.add_expectation(ExpectColumnValuesToNotBeNull(column="id"))
+    suite.add_expectation(ExpectColumnValuesToBeBetween(column="age", min_value=18, max_value=100))
+    suite.add_expectation(ExpectColumnToExist(column="non_existent_col")) # Expect a non-existent column
+
+    validator = Validator(batch=batch)
+    result_suite = validator.validate(suite)
+
+    assert not result_suite.success
+    assert len(result_suite.results) == 4
+
+    # Check specific failures
+    # ExpectColumnValuesToNotBeNull for 'id' should fail
+    id_null_result = next(res for res in result_suite.results if res.details.get("expectation_type") == "expect_column_values_to_not_be_null" and res.details.get("column") == "id")
+    assert not id_null_result.success
+    assert pd.isna(id_null_result.unexpected_values)
+
+    # ExpectColumnValuesToBeBetween for 'age' should fail
+    age_range_result = next(res for res in result_suite.results if res.details.get("expectation_type") == "expect_column_values_to_be_between" and res.details.get("column") == "age")
+    assert not age_range_result.success
+    assert age_range_result.unexpected_values == 
+
+    # ExpectColumnToExist for 'non_existent_col' should fail
+    non_existent_col_result = next(res for res in result_suite.results if res.details.get("expectation_type") == "expect_column_to_exist" and res.details.get("column") == "non_existent_col")
+    assert not non_existent_col_result.success
+7. Conclusion and Future Enhancements
+Summary of the Custom Framework's Capabilities and Advantages
+The custom Python data quality framework presented in this report offers a flexible, extensible, and maintainable solution for ensuring data integrity, drawing significant inspiration from the robust capabilities of Great Expectations while providing tailored control. This framework effectively addresses the critical need for automated data validation, profiling, and documentation in modern data pipelines. Its modular design, rooted in principles of separation of concerns and strategic application of design patterns, ensures high levels of maintainability and adaptability. The framework's adherence to Python development best practices, including a well-defined package structure, robust dependency management, comprehensive testing strategies (including data-driven tests), and structured logging, ensures it is a high-quality, production-ready library. By offering both Pythonic and potentially DSL interfaces, it caters to a broad range of users, fostering collaboration across technical and non-technical stakeholders. This custom solution provides a solid foundation for organizations seeking precise control over their data quality processes, offering a lightweight alternative to existing tools while maintaining comparable functionality.
+
+Roadmap for Future Development
+The inherent extensibility of the framework allows for a clear roadmap of future enhancements, ensuring it can evolve from a foundational tool into a comprehensive enterprise-grade solution.
+
+Advanced Data Source Integrations: Future development will focus on expanding data connectors to include support for streaming data sources (e.g., Kafka, Apache Flink), NoSQL databases (e.g., MongoDB, Cassandra), and cloud-specific data lakes (e.g., AWS S3, Azure Data Lake Storage). This will broaden the framework's applicability across diverse data architectures.   
+
+Enhanced Profiling: The profiler can be enhanced to incorporate more sophisticated algorithms, including advanced statistical analysis, machine learning-based anomaly detection over time, and intelligent suggestion of complex cross-column expectations. This will allow the framework to proactively identify subtle data quality issues and adapt to evolving data patterns.   
+
+UI Integration: Developing a basic web-based user interface (UI) is a key enhancement. This UI would facilitate defining expectations through a no-code or low-code interface, triggering validations, and viewing interactive reports, similar to the capabilities offered by Great Expectations Cloud. A UI would significantly improve usability for data analysts and other non-technical users.   
+
+Orchestration Integration: Providing native integrations with popular data orchestration tools like Apache Airflow, Dagster, or Prefect will enable automated scheduling of validation runs within existing data pipelines. This ensures that data quality checks are seamlessly embedded into continuous data delivery workflows.   
+
+Data Cleansing & Enrichment Hooks: While the core framework focuses on validation, future iterations could include hooks for integrating with external data cleansing or enrichment services. This would allow for automated correction of identified data quality issues or the augmentation of datasets with additional valuable information, transforming the framework into a more active data quality management system.   
+
+Cloud-Native Deployment Patterns: Exploring containerization (Docker, Kubernetes) and serverless deployment options (e.g., AWS Lambda, Azure Functions) will enable scalable, cost-effective, and highly available operation of the framework in cloud environments. This ensures the framework can handle increasing data volumes and validation demands efficiently.   
+
+This outlined roadmap demonstrates the framework's inherent extensibility, confirming that the architectural flexibility built into its design (through the application of design patterns and modularity) allows it to grow with evolving data quality requirements. This proactive approach ensures that the initial investment in this custom framework is future-proof, addressing limitations observed in existing tools, such as Great Expectations' open-source version lacking real-time support or Soda Core's limited open-source UI.   
+
+
+Sources used in the report
+
+docs.greatexpectations.io
+GX Cloud deployment patterns and architecture - Great Expectations Documentation
+Opens in a new window
+
+youtube.com
+Always know what to expect from your data with great_expectations - YouTube
+Opens in a new window
+
+legacy.017.docs.greatexpectations.io
+Great Expectations: Welcome
+Opens in a new window
+
+realpython.com
+Python Code Quality: Best Practices and Tools
+Opens in a new window
+
+legacy.017.docs.greatexpectations.io
+Great Expectations Core Concepts | Great Expectations
+Opens in a new window
+
+zendata.dev
+Establishing a Data Quality Framework: A Comprehensive Guide
+Opens in a new window
+
+pantomath.com
+Data Quality Framework: Modern Best Practices & Examples
+Opens in a new window
+
+coursera.org
+An Introduction to Design Patterns in Python | Coursera
+Opens in a new window
+
+upgrad.com
+Comprehensive Guide on Design Patterns in Python: Types ...
+Opens in a new window
+
+docs.greatexpectations.io
+Customize Expectations - Great Expectations documentation
+Opens in a new window
+
+reddit.com
+Great Expectations is annoyingly cumbersome : r/dataengineering - Reddit
+Opens in a new window
+
+valohai.com
+What every data scientist should know about Python dependencies - Valohai
+Opens in a new window
+
+telm.ai
+3 Open Source Data Quality Tools You Can't Ignore ... - Telmai
+Opens in a new window
+
+atlan.com
+Open Source Data Quality Tools: Top Picks for 2025 - Atlan
+Opens in a new window
+
+lambdatest.com
+Integration Testing Tutorial: A Comprehensive Guide With Examples ...
+Opens in a new window
+
+middleware.io
+12 Python Logging Best Practices To Debug Apps Faster - Middleware
+Opens in a new window
+
+dagster.io
+How to Structure Python Projects - Dagster
+Opens in a new window
+
+moldstud.com
+Advanced Python Integration Testing Techniques Expert Guide ...
+Opens in a new window
+
+docs.python-guide.org
+Structuring Your Project — The Hitchhiker's Guide to Python
+Opens in a new window
+
+signoz.io
+Python Logging Best Practices - Expert Tips with Practical Examples ...
+Opens in a new window
+
+dataroots.io
+Great_expectations: writing custom expectations - dataroots
+Opens in a new window
+
+geeksforgeeks.org
+Best Practices for Managing Python Dependencies - GeeksforGeeks
+Opens in a new window
+
+datacoves.com
+5 Open Source Data Quality Tools – 2024 Edition | Datacoves
+Opens in a new window
+
+medium.com
+Comparative Analysis of Open-Source Data Quality Tools | by ...
+Opens in a new window
+
+Sources read but not used in the report
+Opens in a new window
+Opens in a new window
+Opens in a new window
+Opens in a new window
+
+Thoughts
